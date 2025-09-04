@@ -1,0 +1,9 @@
+{
+  "simulation_metadata": {
+    "volatility": 0.5,
+    "data_file": "data.json",
+    "market_data": {},
+    "total_records": 0
+  },
+  "price_data": []
+}
