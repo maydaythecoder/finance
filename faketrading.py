@@ -78,6 +78,9 @@ class PriceSimulator:
                 raise ValueError(f"Close price ({data['close']}) must be within low-high range")
                 
             logger.info(f"Loaded market data: Open=${data['open']:.2f}, High=${data['high']:.2f}, Low=${data['low']:.2f}, Close=${data['close']:.2f}")
+            
+            # Store the data in instance variable
+            self.market_data = data
             return data
             
         except json.JSONDecodeError as e:
