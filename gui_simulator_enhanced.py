@@ -21,6 +21,7 @@ try:
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     from matplotlib.figure import Figure
+    from matplotlib.patches import Rectangle
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
@@ -59,6 +60,8 @@ class TradingSimulatorGUI:
         # Price history for plotting
         self.price_history = []
         self.time_history = []
+        self.candlestick_data = []  # Store OHLC data for candlesticks
+        self.current_candle = None  # Current candle being built
         
         # Chart objects
         self.figure = None
@@ -338,6 +341,8 @@ Range: ${data['high'] - data['low']:.2f}"""
             # Clear previous data
             self.price_history = []
             self.time_history = []
+            self.candlestick_data = []
+            self.current_candle = None
             if MATPLOTLIB_AVAILABLE:
                 self.ax.clear()
                 self.ax.set_title("Real-time Price Movement")
@@ -536,9 +541,18 @@ Range: ${data['high'] - data['low']:.2f}"""
         self.price_history.append(price)
         self.time_history.append(second)
         
+        # Update candlestick data
+        self.update_candlestick_data(second, price)
+        
         # Update chart
         if MATPLOTLIB_AVAILABLE:
-            self.update_matplotlib_chart()
+            chart_type = self.chart_type_var.get()
+            if chart_type == "Candlestick":
+                self.update_candlestick_chart()
+            elif chart_type == "Area":
+                self.update_area_chart()
+            else:
+                self.update_line_chart()
         else:
             self.update_text_chart(second, interval, price)
         
@@ -560,6 +574,136 @@ Range: ${data['high'] - data['low']:.2f}"""
             self.ax.clear()
             self.ax.plot(self.time_history, self.price_history, 'b-', linewidth=2)
             self.ax.set_title("Real-time Price Movement")
+            self.ax.set_xlabel("Time (seconds)")
+            self.ax.set_ylabel("Price ($)")
+            self.ax.grid(True, alpha=0.3)
+            
+            # Set y-axis limits based on market data
+            if hasattr(self, 'simulator') and self.simulator.market_data:
+                low = self.simulator.market_data['low']
+                high = self.simulator.market_data['high']
+                margin = (high - low) * 0.1
+                self.ax.set_ylim(low - margin, high + margin)
+            
+            self.canvas.draw()
+            
+    def update_candlestick_data(self, second, price):
+        """Update candlestick data with new price."""
+        # Create new candle every 5 seconds (or adjust as needed)
+        candle_interval = 5
+        
+        if second % candle_interval == 0:
+            # Start new candle
+            if self.current_candle is not None:
+                # Complete the previous candle
+                self.candlestick_data.append(self.current_candle)
+            
+            # Start new candle
+            self.current_candle = {
+                'time': second,
+                'open': price,
+                'high': price,
+                'low': price,
+                'close': price
+            }
+        else:
+            # Update current candle
+            if self.current_candle is not None:
+                self.current_candle['high'] = max(self.current_candle['high'], price)
+                self.current_candle['low'] = min(self.current_candle['low'], price)
+                self.current_candle['close'] = price
+                
+    def update_candlestick_chart(self):
+        """Update candlestick chart."""
+        if len(self.candlestick_data) > 0:
+            self.ax.clear()
+            
+            # Complete the current candle if simulation is running
+            if self.current_candle is not None and self.is_running:
+                temp_data = self.candlestick_data + [self.current_candle]
+            else:
+                temp_data = self.candlestick_data
+                
+            if len(temp_data) > 0:
+                # Extract OHLC data
+                times = [candle['time'] for candle in temp_data]
+                opens = [candle['open'] for candle in temp_data]
+                highs = [candle['high'] for candle in temp_data]
+                lows = [candle['low'] for candle in temp_data]
+                closes = [candle['close'] for candle in temp_data]
+                
+                # Plot candlesticks
+                self.plot_candlesticks(times, opens, highs, lows, closes)
+                
+            self.ax.set_title("Real-time Candlestick Chart")
+            self.ax.set_xlabel("Time (seconds)")
+            self.ax.set_ylabel("Price ($)")
+            self.ax.grid(True, alpha=0.3)
+            
+            # Set y-axis limits based on market data
+            if hasattr(self, 'simulator') and self.simulator.market_data:
+                low = self.simulator.market_data['low']
+                high = self.simulator.market_data['high']
+                margin = (high - low) * 0.1
+                self.ax.set_ylim(low - margin, high + margin)
+            
+            self.canvas.draw()
+            
+    def plot_candlesticks(self, times, opens, highs, lows, closes):
+        """Plot candlestick patterns."""
+        for i in range(len(times)):
+            time = times[i]
+            open_price = opens[i]
+            high = highs[i]
+            low = lows[i]
+            close = closes[i]
+            
+            # Determine candle color (green for bullish, red for bearish)
+            is_bullish = close >= open_price
+            color = 'green' if is_bullish else 'red'
+            
+            # Plot the wick (high-low line)
+            self.ax.plot([time, time], [low, high], color='black', linewidth=1)
+            
+            # Plot the body
+            body_height = abs(close - open_price)
+            if body_height > 0:
+                # Filled rectangle for the body
+                rect = plt.Rectangle((time - 0.2, min(open_price, close)), 
+                                   0.4, body_height, 
+                                   facecolor=color, edgecolor='black', linewidth=1)
+                self.ax.add_patch(rect)
+            else:
+                # Doji (no body) - just a line
+                self.ax.plot([time - 0.2, time + 0.2], [open_price, open_price], 
+                           color='black', linewidth=2)
+                
+    def update_line_chart(self):
+        """Update line chart."""
+        if len(self.price_history) > 1:
+            self.ax.clear()
+            self.ax.plot(self.time_history, self.price_history, 'b-', linewidth=2)
+            self.ax.set_title("Real-time Price Movement")
+            self.ax.set_xlabel("Time (seconds)")
+            self.ax.set_ylabel("Price ($)")
+            self.ax.grid(True, alpha=0.3)
+            
+            # Set y-axis limits based on market data
+            if hasattr(self, 'simulator') and self.simulator.market_data:
+                low = self.simulator.market_data['low']
+                high = self.simulator.market_data['high']
+                margin = (high - low) * 0.1
+                self.ax.set_ylim(low - margin, high + margin)
+            
+            self.canvas.draw()
+            
+    def update_area_chart(self):
+        """Update area chart."""
+        if len(self.price_history) > 1:
+            self.ax.clear()
+            self.ax.fill_between(self.time_history, self.price_history, alpha=0.6, color='blue')
+            self.ax.plot(self.time_history, self.price_history, 'b-', linewidth=2)
+            self.ax.set_title("Real-time Price Movement (Area)")
             self.ax.set_xlabel("Time (seconds)")
             self.ax.set_ylabel("Price ($)")
             self.ax.grid(True, alpha=0.3)
