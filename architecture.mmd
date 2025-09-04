@@ -1,0 +1,29 @@
+flowchart TD
+    A[Trading Bot Architecture]
+
+    A --> B[Data Layer<br>JSON Inputs]
+    A --> C[Core Processing Engine]
+    A --> D[Execution Layer<br>APIs & WebSockets]
+    A --> E[Persistence & Storage<br>Database & Files]
+    A --> F[Monitoring & Control<br>UI & Logging]
+
+    B --> B1[Market Data<br>Real-time & Historical JSON]
+    B --> B2[Signal Data<br>Strategy-specific JSON config]
+    B --> B3[Account & Order Data<br>JSON from Exchange API]
+
+    C --> C1[Data Ingestion Module<br>Parses & Validates JSON]
+    C --> C2[Strategy Engine<br>Applies logic to market data]
+    C --> C3[Risk Management Module<br>Validates trades]
+    C --> C4[Decision Engine<br>Generates trade signals]
+
+    D --> D1[Exchange API Connector<br>REST & WebSocket]
+    D --> D2[Order Manager<br>Places/Cancels orders via JSON]
+    D --> D3[Execution Reporter<br>Confirms fills]
+
+    E --> E1[Time-Series Database<br>e.g. TimescaleDB]
+    E --> E2[Document Storage<br>e.g. MongoDB for JSON logs]
+    E --> E3[File System<br>For config & backup]
+
+    F --> F1[Web Dashboard<br>React/Flask UI]
+    F --> F2[Alert System<br>Slack/Telegram Webhooks]
+    F --> F3[Logger<br>Structured JSON Logging]
