@@ -16,6 +16,17 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import queue
 
+# Try to import matplotlib for candlestick charts
+try:
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    from matplotlib.figure import Figure
+    from matplotlib.patches import Rectangle
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    print("Matplotlib not available. Install it to enable candlestick charts.")
+
 # Import our simulator
 from faketrading import PriceSimulator
 
@@ -48,6 +59,13 @@ class TradingSimulatorGUI:
         # Price history for plotting
         self.price_history = []
         self.time_history = []
+        
+        # Candlestick aggregation and chart objects
+        self.candlestick_data = []  # List[Dict[str, float]]
+        self.current_candle = None
+        self.figure = None
+        self.canvas = None
+        self.ax = None
         
         self.setup_gui()
         self.setup_bindings()
@@ -172,16 +190,23 @@ class TradingSimulatorGUI:
         self.progress_label = ttk.Label(progress_frame, text="0/60 seconds")
         self.progress_label.pack(side=tk.LEFT, padx=(10, 0))
         
-        # Price Chart (Simple text-based for now)
-        chart_frame = ttk.LabelFrame(display_frame, text="Price Chart", padding="5")
+        # Candlestick Chart
+        chart_frame = ttk.LabelFrame(display_frame, text="Price Chart (Candlesticks)", padding="5")
         chart_frame.pack(fill=tk.BOTH, expand=True)
         
-        self.chart_text = tk.Text(chart_frame, height=15, width=50)
-        chart_scrollbar = ttk.Scrollbar(chart_frame, orient=tk.VERTICAL, command=self.chart_text.yview)
-        self.chart_text.configure(yscrollcommand=chart_scrollbar.set)
-        
-        self.chart_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        chart_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        if MATPLOTLIB_AVAILABLE:
+            self.figure = Figure(figsize=(8, 4), dpi=100)
+            self.ax = self.figure.add_subplot(111)
+            self.ax.set_title("Real-time Candlestick Chart")
+            self.ax.set_xlabel("Time (seconds)")
+            self.ax.set_ylabel("Price ($)")
+            self.ax.grid(True, alpha=0.3)
+            
+            self.canvas = FigureCanvasTkAgg(self.figure, chart_frame)
+            self.canvas.draw()
+            self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        else:
+            ttk.Label(chart_frame, text="Matplotlib is required for candlestick charts.\nInstall with: pip install matplotlib").pack(fill=tk.BOTH, expand=True)
         
         # Log Display
         log_frame = ttk.LabelFrame(display_frame, text="Simulation Log", padding="5")
@@ -280,7 +305,15 @@ Range: ${data['high'] - data['low']:.2f}"""
             # Clear previous data
             self.price_history = []
             self.time_history = []
-            self.chart_text.delete(1.0, tk.END)
+            if MATPLOTLIB_AVAILABLE and self.ax is not None:
+                self.ax.clear()
+                self.ax.set_title("Real-time Candlestick Chart")
+                self.ax.set_xlabel("Time (seconds)")
+                self.ax.set_ylabel("Price ($)")
+                self.ax.grid(True, alpha=0.3)
+                self.candlestick_data = []
+                self.current_candle = None
+                self.canvas.draw()
             self.log_text.delete(1.0, tk.END)
             
             # Start simulation thread
@@ -408,7 +441,15 @@ Range: ${data['high'] - data['low']:.2f}"""
         """Reset the simulation display."""
         self.price_history = []
         self.time_history = []
-        self.chart_text.delete(1.0, tk.END)
+        if MATPLOTLIB_AVAILABLE and self.ax is not None:
+            self.ax.clear()
+            self.ax.set_title("Real-time Candlestick Chart")
+            self.ax.set_xlabel("Time (seconds)")
+            self.ax.set_ylabel("Price ($)")
+            self.ax.grid(True, alpha=0.3)
+            self.candlestick_data = []
+            self.current_candle = None
+            self.canvas.draw()
         self.log_text.delete(1.0, tk.END)
         self.current_price_label.config(text="$0.00")
         self.progress_bar['value'] = 0
@@ -417,6 +458,87 @@ Range: ${data['high'] - data['low']:.2f}"""
         self.simulation_time_label.config(text="")
         
         self.log_message("Display reset")
+
+    def update_candlestick_data(self, second, price):
+        """Aggregate tick updates into 5-second OHLC candles."""
+        candle_interval = 5
+        
+        if second % candle_interval == 0:
+            # Start a new candle at boundaries; store the previous one
+            if self.current_candle is not None:
+                self.candlestick_data.append(self.current_candle)
+            self.current_candle = {
+                'time': second,
+                'open': price,
+                'high': price,
+                'low': price,
+                'close': price
+            }
+        else:
+            if self.current_candle is not None:
+                self.current_candle['high'] = max(self.current_candle['high'], price)
+                self.current_candle['low'] = min(self.current_candle['low'], price)
+                self.current_candle['close'] = price
+
+    def update_candlestick_chart(self):
+        """Render candlesticks on the chart."""
+        if not MATPLOTLIB_AVAILABLE or self.ax is None:
+            return
+        
+        self.ax.clear()
+        
+        # Include the in-progress candle
+        if self.current_candle is not None:
+            temp_data = self.candlestick_data + [self.current_candle]
+        else:
+            temp_data = self.candlestick_data
+        
+        if len(temp_data) > 0:
+            times = [c['time'] for c in temp_data]
+            opens = [c['open'] for c in temp_data]
+            highs = [c['high'] for c in temp_data]
+            lows = [c['low'] for c in temp_data]
+            closes = [c['close'] for c in temp_data]
+            self.plot_candlesticks(times, opens, highs, lows, closes)
+        
+        self.ax.set_title("Real-time Candlestick Chart")
+        self.ax.set_xlabel("Time (seconds)")
+        self.ax.set_ylabel("Price ($)")
+        self.ax.grid(True, alpha=0.3)
+        
+        # Y-limits from market data if available
+        if self.simulator and self.simulator.market_data:
+            low = self.simulator.market_data['low']
+            high = self.simulator.market_data['high']
+            margin = (high - low) * 0.1
+            self.ax.set_ylim(low - margin, high + margin)
+        
+        if self.canvas is not None:
+            self.canvas.draw()
+
+    def plot_candlesticks(self, times, opens, highs, lows, closes):
+        """Draw candle wicks and bodies."""
+        for i in range(len(times)):
+            t = times[i]
+            o = opens[i]
+            h = highs[i]
+            l = lows[i]
+            c = closes[i]
+            
+            is_bullish = c >= o
+            color = 'green' if is_bullish else 'red'
+            
+            # Wick
+            self.ax.plot([t, t], [l, h], color='black', linewidth=1)
+            
+            # Body
+            body_height = abs(c - o)
+            if body_height > 0:
+                rect = Rectangle((t - 0.2, min(o, c)), 0.4, body_height, facecolor=color, edgecolor='black', linewidth=1)
+                self.ax.add_patch(rect)
+            else:
+                # Doji
+                self.ax.plot([t - 0.2, t + 0.2], [o, o], color='black', linewidth=2)
         
     def update_display(self):
         """Update the display with data from the simulation thread."""
@@ -457,15 +579,10 @@ Range: ${data['high'] - data['low']:.2f}"""
         self.price_history.append(price)
         self.time_history.append(second)
         
-        # Update chart (keep last 50 points)
-        if len(self.price_history) > 50:
-            self.price_history = self.price_history[-50:]
-            self.time_history = self.time_history[-50:]
-            
-        # Simple text-based chart
-        chart_line = f"[{second:3d}s] {interval:10s} ${price:8.2f}"
-        self.chart_text.insert(tk.END, chart_line + "\n")
-        self.chart_text.see(tk.END)
+        # Update candlestick aggregation and redraw
+        if MATPLOTLIB_AVAILABLE and self.ax is not None:
+            self.update_candlestick_data(second, price)
+            self.update_candlestick_chart()
         
         # Log message
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -485,6 +602,11 @@ Range: ${data['high'] - data['low']:.2f}"""
         self.pause_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.DISABLED)
         self.status_label.config(text="Simulation Complete")
+        
+        # Draw the final candle state
+        if MATPLOTLIB_AVAILABLE and self.ax is not None:
+            self.update_candlestick_chart()
+            self.canvas.draw()
         
         self.log_message("Simulation completed successfully")
         messagebox.showinfo("Simulation Complete", 

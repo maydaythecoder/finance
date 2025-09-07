@@ -55,7 +55,7 @@ class TradingSimulatorGUI:
         self.data_file_var = tk.StringVar(value="data.json")
         self.output_file_var = tk.StringVar(value="simulation_results.json")
         self.log_level_var = tk.StringVar(value="INFO")
-        self.chart_type_var = tk.StringVar(value="Line")
+        self.chart_type_var = tk.StringVar(value="Candlestick")
         
         # Price history for plotting
         self.price_history = []
@@ -618,8 +618,8 @@ Range: ${data['high'] - data['low']:.2f}"""
         if len(self.candlestick_data) > 0:
             self.ax.clear()
             
-            # Complete the current candle if simulation is running
-            if self.current_candle is not None and self.is_running:
+            # Include the current candle if it exists (even after completion)
+            if self.current_candle is not None:
                 temp_data = self.candlestick_data + [self.current_candle]
             else:
                 temp_data = self.candlestick_data
@@ -669,7 +669,7 @@ Range: ${data['high'] - data['low']:.2f}"""
             body_height = abs(close - open_price)
             if body_height > 0:
                 # Filled rectangle for the body
-                rect = plt.Rectangle((time - 0.2, min(open_price, close)), 
+                rect = Rectangle((time - 0.2, min(open_price, close)), 
                                    0.4, body_height, 
                                    facecolor=color, edgecolor='black', linewidth=1)
                 self.ax.add_patch(rect)
