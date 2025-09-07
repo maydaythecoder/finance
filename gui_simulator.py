@@ -54,6 +54,8 @@ class TradingSimulatorGUI:
         self.duration_var = tk.IntVar(value=60)
         # Candle interval selector (default 1 second)
         self.candle_interval_var = tk.StringVar(value="1 sec")
+        # Total duration selector (default 1 sec per request)
+        self.total_duration_var = tk.StringVar(value="1 sec")
         self.data_file_var = tk.StringVar(value="data.json")
         self.output_file_var = tk.StringVar(value="simulation_results.json")
         self.log_level_var = tk.StringVar(value="INFO")
@@ -119,12 +121,19 @@ class TradingSimulatorGUI:
                                       state="readonly", width=10)
         interval_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
         
+        # Total Duration Selector
+        ttk.Label(params_frame, text="Total Duration:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        duration_combo = ttk.Combobox(params_frame, textvariable=self.total_duration_var,
+                                      values=["1 sec", "5 sec", "1 min", "5 min"],
+                                      state="readonly", width=10)
+        duration_combo.grid(row=2, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
+        
         # Log Level
-        ttk.Label(params_frame, text="Log Level:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        ttk.Label(params_frame, text="Log Level:").grid(row=3, column=0, sticky=tk.W, pady=2)
         log_combo = ttk.Combobox(params_frame, textvariable=self.log_level_var, 
                                values=["DEBUG", "INFO", "WARNING", "ERROR"], 
                                state="readonly", width=10)
-        log_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
+        log_combo.grid(row=3, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
         
         # File Configuration
         file_frame = ttk.LabelFrame(control_frame, text="File Configuration", padding="5")
@@ -319,6 +328,11 @@ Range: ${data['high'] - data['low']:.2f}"""
                 self.canvas.draw()
             self.log_text.delete(1.0, tk.END)
             
+            # Map total duration from selector
+            total_duration = self.map_duration_to_seconds(self.total_duration_var.get())
+            if isinstance(total_duration, int) and total_duration > 0:
+                self.duration_var.set(total_duration)
+            
             # Start simulation thread
             self.is_running = True
             self.pause_simulation = False
@@ -504,7 +518,10 @@ Range: ${data['high'] - data['low']:.2f}"""
             closes = [c['close'] for c in temp_data]
             self.plot_candlesticks(times, opens, highs, lows, closes)
         
-        self.ax.set_title("Real-time Candlestick Chart")
+        # Title reflects selected interval and total duration
+        interval_label = self.candle_interval_var.get()
+        total_label = self.total_duration_var.get()
+        self.ax.set_title(f"Candlesticks ({interval_label}) · Total {total_label}")
         self.ax.set_xlabel("Time (seconds)")
         self.ax.set_ylabel("Price ($)")
         self.ax.grid(True, alpha=0.3)
@@ -553,6 +570,22 @@ Range: ${data['high'] - data['low']:.2f}"""
         if value.startswith("5 sec"):
             return 5
         return 1
+
+    def map_duration_to_seconds(self, value: str) -> int:
+        """Map a duration label (e.g., '1 sec', '5 min') to seconds."""
+        if not value:
+            return 60
+        v = value.strip().lower()
+        if v.startswith('5 min'):
+            return 300
+        if v.startswith('1 min'):
+            return 60
+        if v.startswith('5 sec'):
+            return 5
+        if v.startswith('1 sec'):
+            return 1
+        # Fallback to previous duration
+        return max(1, int(self.duration_var.get() or 60))
         
     def update_display(self):
         """Update the display with data from the simulation thread."""
