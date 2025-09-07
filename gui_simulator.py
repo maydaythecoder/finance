@@ -52,6 +52,8 @@ class TradingSimulatorGUI:
         # GUI variables
         self.volatility_var = tk.DoubleVar(value=0.5)
         self.duration_var = tk.IntVar(value=60)
+        # Candle interval selector (default 1 second)
+        self.candle_interval_var = tk.StringVar(value="1 sec")
         self.data_file_var = tk.StringVar(value="data.json")
         self.output_file_var = tk.StringVar(value="simulation_results.json")
         self.log_level_var = tk.StringVar(value="INFO")
@@ -110,11 +112,12 @@ class TradingSimulatorGUI:
         volatility_scale.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
         ttk.Label(params_frame, textvariable=tk.StringVar(value="0.5")).grid(row=0, column=2, padx=(5, 0))
         
-                # Duration
-        ttk.Label(params_frame, text="Duration (seconds):").grid(row=1, column=0, sticky=tk.W, pady=2)
-        duration_spin = tk.Spinbox(params_frame, from_=10, to=300, 
-                                   textvariable=self.duration_var, width=10)
-        duration_spin.grid(row=1, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
+        # Candle Interval Selector
+        ttk.Label(params_frame, text="Candle Interval:").grid(row=1, column=0, sticky=tk.W, pady=2)
+        interval_combo = ttk.Combobox(params_frame, textvariable=self.candle_interval_var,
+                                      values=["1 sec", "5 sec", "1 min", "5 min"],
+                                      state="readonly", width=10)
+        interval_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
         
         # Log Level
         ttk.Label(params_frame, text="Log Level:").grid(row=2, column=0, sticky=tk.W, pady=2)
@@ -453,7 +456,7 @@ Range: ${data['high'] - data['low']:.2f}"""
         self.log_text.delete(1.0, tk.END)
         self.current_price_label.config(text="$0.00")
         self.progress_bar['value'] = 0
-        self.progress_label.config(text="0/60 seconds")
+        self.progress_label.config(text=f"0/{self.duration_var.get()} seconds")
         self.status_label.config(text="Ready")
         self.simulation_time_label.config(text="")
         
@@ -461,7 +464,7 @@ Range: ${data['high'] - data['low']:.2f}"""
 
     def update_candlestick_data(self, second, price):
         """Aggregate tick updates into 5-second OHLC candles."""
-        candle_interval = 5
+        candle_interval = self.get_candle_interval_seconds()
         
         if second % candle_interval == 0:
             # Start a new candle at boundaries; store the previous one
@@ -539,6 +542,17 @@ Range: ${data['high'] - data['low']:.2f}"""
             else:
                 # Doji
                 self.ax.plot([t - 0.2, t + 0.2], [o, o], color='black', linewidth=2)
+
+    def get_candle_interval_seconds(self) -> int:
+        """Map UI selection to seconds."""
+        value = (self.candle_interval_var.get() or "1 sec").strip().lower()
+        if value.startswith("5 min"):
+            return 300
+        if value.startswith("1 min"):
+            return 60
+        if value.startswith("5 sec"):
+            return 5
+        return 1
         
     def update_display(self):
         """Update the display with data from the simulation thread."""
@@ -569,7 +583,7 @@ Range: ${data['high'] - data['low']:.2f}"""
         # Update current price
         self.current_price_label.config(text=f"${price:.2f}")
         
-        # Update progress
+        # Update progress (label reflects candle interval selection)
         duration = self.duration_var.get()
         progress = (second / duration) * 100
         self.progress_bar['value'] = progress
